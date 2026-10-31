@@ -1,0 +1,6 @@
+{
+  "name": "Anchor",
+  "description": "Zero-friction capture to-do and notes app powered by Gemini AI with intelligent sorting, daily reviews, and focus guard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

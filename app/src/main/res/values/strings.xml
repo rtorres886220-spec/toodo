@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Anchor</string>
+    <string name="shortcut_new_task">New task</string>
+    <string name="shortcut_new_task_long">Capture new task or note</string>
+    <string name="shortcut_voice_capture">Voice capture</string>
+    <string name="shortcut_voice_capture_long">Record and voice capture</string>
+</resources>
