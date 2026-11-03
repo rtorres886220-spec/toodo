@@ -201,6 +201,25 @@ class AnchorRepository(
                 aiSorted = true
             )
         )
+        // Auto-reschedule recurring commitments
+        if (!item.recurrenceRule.isNullOrBlank()) {
+            val nextDate = calculateNextRecurrenceDate(item.dueDate, item.recurrenceRule)
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val nextItem = item.copy(
+                id = 0L,
+                status = if (nextDate == todayStr) AnchorItem.STATUS_TODAY else AnchorItem.STATUS_INBOX,
+                dueDate = nextDate,
+                completedAt = null,
+                snoozeCount = 0,
+                snoozeUntil = null,
+                createdAt = System.currentTimeMillis()
+            )
+            val newId = dao.insert(nextItem)
+            val inserted = dao.getItemById(newId)
+            if (inserted != null && inserted.dueDate != null) {
+                AnchorAlarmScheduler.scheduleTaskReminder(appContext, inserted)
+            }
+        }
     }
 
     suspend fun uncomplete(item: AnchorItem) {
@@ -362,5 +381,95 @@ class AnchorRepository(
         val updatedParent = parentTask.copy(aiBreakdownSteps = checklist)
         dao.update(updatedParent)
         return updatedParent
+    }
+
+    fun searchAll(query: String): Flow<List<AnchorItem>> = dao.searchAllItems(query)
+
+    fun calculateNextRecurrenceDate(currentDueDate: String?, recurrenceRule: String?): String {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val cal = Calendar.getInstance()
+        if (!currentDueDate.isNullOrBlank()) {
+            try {
+                val parsed = sdf.parse(currentDueDate)
+                if (parsed != null) cal.time = parsed
+            } catch (_: Exception) {}
+        }
+        val todayCal = Calendar.getInstance()
+        if (cal.before(todayCal)) {
+            cal.time = todayCal.time
+        }
+
+        when (recurrenceRule) {
+            AnchorItem.RECURRENCE_DAILY -> cal.add(Calendar.DAY_OF_YEAR, 1)
+            AnchorItem.RECURRENCE_WEEKDAYS -> {
+                do {
+                    cal.add(Calendar.DAY_OF_YEAR, 1)
+                } while (cal.get(Calendar.DAY_OF_WEEK) == Calendar.SATURDAY || cal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY)
+            }
+            AnchorItem.RECURRENCE_WEEKLY -> cal.add(Calendar.WEEK_OF_YEAR, 1)
+            AnchorItem.RECURRENCE_MONTHLY -> cal.add(Calendar.MONTH, 1)
+            else -> cal.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        return sdf.format(cal.time)
+    }
+
+    suspend fun exportDataAsJson(): String = withContext(Dispatchers.IO) {
+        val active = dao.getAllActiveItemsSync()
+        val array = org.json.JSONArray()
+        for (item in active) {
+            val obj = org.json.JSONObject().apply {
+                put("title", item.title)
+                put("rawInput", item.rawInput)
+                put("type", item.type)
+                put("dueDate", item.dueDate ?: org.json.JSONObject.NULL)
+                put("dueTime", item.dueTime ?: org.json.JSONObject.NULL)
+                put("priority", item.priority)
+                put("tags", item.tags)
+                put("estimatedMinutes", item.estimatedMinutes ?: org.json.JSONObject.NULL)
+                put("status", item.status)
+                put("isPinnedToToday", item.isPinnedToToday)
+                put("todayOrder", item.todayOrder)
+                put("createdAt", item.createdAt)
+                put("completedAt", item.completedAt ?: org.json.JSONObject.NULL)
+                put("recurrenceRule", item.recurrenceRule ?: org.json.JSONObject.NULL)
+            }
+            array.put(obj)
+        }
+        array.toString(2)
+    }
+
+    suspend fun importDataFromJson(jsonStr: String): Int = withContext(Dispatchers.IO) {
+        try {
+            val array = org.json.JSONArray(jsonStr)
+            val itemsToInsert = mutableListOf<AnchorItem>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val item = AnchorItem(
+                    title = obj.getString("title"),
+                    rawInput = obj.optString("rawInput", ""),
+                    type = obj.optString("type", AnchorItem.TYPE_TASK),
+                    dueDate = if (obj.isNull("dueDate")) null else obj.getString("dueDate"),
+                    dueTime = if (obj.isNull("dueTime")) null else obj.getString("dueTime"),
+                    priority = obj.optString("priority", AnchorItem.PRIORITY_MEDIUM),
+                    tags = obj.optString("tags", ""),
+                    estimatedMinutes = if (obj.isNull("estimatedMinutes")) null else obj.getInt("estimatedMinutes"),
+                    status = obj.optString("status", AnchorItem.STATUS_INBOX),
+                    isPinnedToToday = obj.optBoolean("isPinnedToToday", false),
+                    todayOrder = obj.optInt("todayOrder", 0),
+                    createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
+                    completedAt = if (obj.isNull("completedAt")) null else obj.getLong("completedAt"),
+                    recurrenceRule = if (obj.isNull("recurrenceRule")) null else obj.getString("recurrenceRule"),
+                    aiSorted = true
+                )
+                itemsToInsert.add(item)
+            }
+            if (itemsToInsert.isNotEmpty()) {
+                dao.insertAll(itemsToInsert)
+            }
+            itemsToInsert.size
+        } catch (e: Exception) {
+            Log.e(TAG, "Import error", e)
+            0
+        }
     }
 }

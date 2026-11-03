@@ -63,6 +63,7 @@ fun EditItemSheet(
     var priority by remember { mutableStateOf(item.priority) }
     var tags by remember { mutableStateOf(item.tags) }
     var estimatedMinutes by remember { mutableStateOf(item.estimatedMinutes?.toString() ?: "25") }
+    var recurrenceRule by remember { mutableStateOf(item.recurrenceRule) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -309,6 +310,42 @@ fun EditItemSheet(
 
             Spacer(modifier = Modifier.height(18.dp))
 
+            // Recurrence
+            Text(
+                text = "RECURRENCE",
+                fontFamily = GeistMono,
+                fontSize = 11.sp,
+                color = TextSecondary,
+                letterSpacing = 0.14.em
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    null to "NONE",
+                    AnchorItem.RECURRENCE_DAILY to "DAILY",
+                    AnchorItem.RECURRENCE_WEEKDAYS to "WEEKDAYS",
+                    AnchorItem.RECURRENCE_WEEKLY to "WEEKLY",
+                    AnchorItem.RECURRENCE_MONTHLY to "MONTHLY"
+                ).forEach { (rRule, label) ->
+                    val isSelected = recurrenceRule == rRule
+                    Text(
+                        text = label,
+                        fontFamily = GeistMono,
+                        fontSize = 11.sp,
+                        color = if (isSelected) AccentGold else TextTertiary,
+                        letterSpacing = 0.14.em,
+                        modifier = Modifier
+                            .clickable {
+                                HapticHelper.vibrate8ms(context)
+                                recurrenceRule = rRule
+                            }
+                            .padding(vertical = 4.dp, horizontal = 4.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
             // Tags
             Text(
                 text = "TAGS",
@@ -336,7 +373,8 @@ fun EditItemSheet(
                                 dueTime = dueTime.ifBlank { null },
                                 priority = priority.lowercase().ifBlank { AnchorItem.PRIORITY_MEDIUM },
                                 tags = tags.trim(),
-                                estimatedMinutes = estimatedMinutes.toIntOrNull()
+                                estimatedMinutes = estimatedMinutes.toIntOrNull(),
+                                recurrenceRule = recurrenceRule
                             )
                         )
                     }

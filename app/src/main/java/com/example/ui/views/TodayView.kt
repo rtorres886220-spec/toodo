@@ -874,9 +874,9 @@ fun TodayView(
             }
         }
 
-        // Bottom space so scrolling content is never occluded by floating CaptureBar
+        // Bottom space so scrolling content is never occluded by floating CaptureBar & QuietNavigationBar
         item {
-            Spacer(modifier = Modifier.height(140.dp))
+            Spacer(modifier = Modifier.height(180.dp))
         }
     }
 }

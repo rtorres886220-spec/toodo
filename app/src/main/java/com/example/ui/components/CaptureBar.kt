@@ -82,6 +82,7 @@ import com.example.ui.util.HapticHelper
 @Composable
 fun CaptureBar(
     onCapture: (String) -> Unit,
+    onIntelligenceQuery: (String) -> Unit = {},
     clipboardText: String?,
     onAcceptClipboard: () -> Unit,
     onDismissClipboard: () -> Unit,
@@ -235,7 +236,7 @@ fun CaptureBar(
                             .background(Surface2)
                             .clickable {
                                 HapticHelper.vibrate8ms(context)
-                                onCapture(prompt)
+                                onIntelligenceQuery(prompt)
                             }
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {

@@ -18,6 +18,7 @@ import com.example.notification.AnchorAlarmScheduler
 import com.example.notification.NotificationHelper
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -67,7 +68,9 @@ data class AnchorUiState(
     val eveningTime: String = "20:00",
     val quietHours: String = "22:00 - 07:00",
     val escalationIntensity: String = "Standard",
-    val deadAppHours: Int = 6
+    val deadAppHours: Int = 6,
+    val isSearchOpen: Boolean = false,
+    val searchQuery: String = ""
 )
 
 class AnchorViewModel(application: Application) : AndroidViewModel(application) {
@@ -96,6 +99,17 @@ class AnchorViewModel(application: Application) : AndroidViewModel(application) 
     val doneItems = repository.allDone.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val habitualSnoozed = repository.habitualSnoozed.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val searchResults = _searchQuery
+        .flatMapLatest { query ->
+            if (query.isBlank()) flowOf(emptyList())
+            else repository.searchAll(query.trim())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _overdueItems = MutableStateFlow<List<AnchorItem>>(emptyList())
     val overdueItems: StateFlow<List<AnchorItem>> = _overdueItems.asStateFlow()
 
@@ -118,6 +132,35 @@ class AnchorViewModel(application: Application) : AndroidViewModel(application) 
     fun setTab(tab: AnchorTab) {
         _uiState.update { it.copy(activeTab = tab) }
         refreshOverdue()
+    }
+
+    fun openSearch() {
+        _uiState.update { it.copy(isSearchOpen = true) }
+    }
+
+    fun closeSearch() {
+        _searchQuery.value = ""
+        _uiState.update { it.copy(isSearchOpen = false, searchQuery = "") }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+        _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun exportBackup(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            val json = repository.exportDataAsJson()
+            onResult(json)
+        }
+    }
+
+    fun importBackup(jsonStr: String, onResult: (Int) -> Unit) {
+        viewModelScope.launch {
+            val count = repository.importDataFromJson(jsonStr)
+            refreshOverdue()
+            onResult(count)
+        }
     }
 
     fun refreshOverdue() {

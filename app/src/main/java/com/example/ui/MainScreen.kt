@@ -37,6 +37,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import com.example.ui.components.AnchorCard
+import com.example.ui.components.BentoGridCard
+import com.example.ui.components.QuietEmptyState
+import com.example.ui.components.getCategoryTint
 import androidx.compose.ui.draw.clip
 import com.example.ui.theme.Surface1
 import androidx.compose.material3.Scaffold
@@ -127,6 +137,8 @@ fun MainScreen(
     val notes by viewModel.notes.collectAsState()
     val doneTasks by viewModel.doneItems.collectAsState()
     val overdueTasks by viewModel.overdueItems.collectAsState()
+    val searchResults by viewModel.searchResults.collectAsState()
+    val searchQuery by viewModel.searchQuery.collectAsState()
 
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -181,7 +193,7 @@ fun MainScreen(
     var selectedDetailItem by remember { mutableStateOf<AnchorItem?>(null) }
     var selectedNoteItem by remember { mutableStateOf<AnchorItem?>(null) }
 
-    // System BackHandler: pop open sheets and dialogs gracefully
+    // System BackHandler: pop open sheets, search, tabs, and dialogs gracefully
     val hasOpenOverlay = selectedDetailItem != null ||
         selectedNoteItem != null ||
         uiState.possibleDuplicate != null ||
@@ -191,7 +203,9 @@ fun MainScreen(
         uiState.isMorningBriefOpen ||
         uiState.isEveningReviewOpen ||
         uiState.isSnoozeCoachOpen ||
-        uiState.isIntelligenceOpen
+        uiState.isIntelligenceOpen ||
+        uiState.isSearchOpen ||
+        uiState.activeTab != AnchorTab.TODAY
 
     BackHandler(enabled = hasOpenOverlay) {
         when {
@@ -205,6 +219,8 @@ fun MainScreen(
             uiState.editingItem != null -> viewModel.dismissEditing()
             selectedDetailItem != null -> selectedDetailItem = null
             selectedNoteItem != null -> selectedNoteItem = null
+            uiState.isSearchOpen -> viewModel.closeSearch()
+            uiState.activeTab != AnchorTab.TODAY -> viewModel.setTab(AnchorTab.TODAY)
         }
     }
 
@@ -259,32 +275,198 @@ fun MainScreen(
                 }
                 .subtleFilmGrainOverlay()
         ) {
-            // Main content with tab cross-fade and slight horizontal parallax
+            // Main content with tab cross-fade or Global Search
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(top = 110.dp) // Space for floating header
             ) {
-                TodayView(
-                    todayTasks = todayTasks,
-                    upcomingTasks = upcomingTasks,
-                    overdueTasks = overdueTasks,
-                    inboxTasks = inboxTasks,
-                    notes = notes,
-                    doneTasks = doneTasks,
-                    onMoveToToday = { viewModel.moveToToday(it) },
-                    onSnooze = { viewModel.snoozeTask(it) },
-                    onComplete = { viewModel.completeTask(it) },
-                    onDelete = { viewModel.deleteTask(it) },
-                    onEdit = { viewModel.startEditing(it) },
-                    onTaskClick = { selectedDetailItem = it },
-                    onNoteClick = { selectedNoteItem = it },
-                    onRestore = { viewModel.uncompleteTask(it) },
-                    onSnoozeCoach = { viewModel.openSnoozeCoach(it) },
-                    onOpenMorningBrief = { viewModel.openMorningBrief() },
-                    onOpenEveningReview = { viewModel.openEveningReview() },
-                    onAiTriage = { viewModel.openInboxTriage() }
-                )
+                if (uiState.isSearchOpen) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 24.dp)
+                    ) {
+                        // Instant Search Bar
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(Surface1)
+                                .drawBehind {
+                                    drawLine(
+                                        color = com.example.ui.theme.SurfaceHighlight,
+                                        start = Offset(0f, 0.5f),
+                                        end = Offset(size.width, 0.5f),
+                                        strokeWidth = 1.dp.toPx()
+                                    )
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { viewModel.updateSearchQuery(it) },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("search_input_field"),
+                                    textStyle = TextStyle(
+                                        color = TextPrimary,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Normal,
+                                        fontSize = 15.sp
+                                    ),
+                                    singleLine = true,
+                                    cursorBrush = SolidColor(com.example.ui.theme.AccentGold),
+                                    decorationBox = { inner ->
+                                        if (searchQuery.isEmpty()) {
+                                            Text(
+                                                text = "Search all anchors, notes, tags...",
+                                                color = TextSecondary,
+                                                fontFamily = PlusJakartaSans,
+                                                fontSize = 14.sp
+                                            )
+                                        }
+                                        inner()
+                                    }
+                                )
+                                if (searchQuery.isNotEmpty()) {
+                                    Text(
+                                        text = "CLEAR",
+                                        fontFamily = GeistMono,
+                                        fontSize = 11.sp,
+                                        color = com.example.ui.theme.AccentGold,
+                                        letterSpacing = 0.12.em,
+                                        modifier = Modifier
+                                            .clickable { viewModel.updateSearchQuery("") }
+                                            .padding(horizontal = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Results count
+                        if (searchQuery.isNotEmpty()) {
+                            Text(
+                                text = "MATCHING RESULTS (${searchResults.size})",
+                                fontFamily = GeistMono,
+                                fontSize = 11.sp,
+                                color = TextSecondary,
+                                letterSpacing = 0.14.em,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (searchQuery.isNotBlank() && searchResults.isEmpty()) {
+                                item {
+                                    QuietEmptyState(message = "No matching anchors found for '$searchQuery'")
+                                }
+                            } else {
+                                items(searchResults, key = { "search_${it.id}" }) { item ->
+                                    if (item.type == AnchorItem.TYPE_NOTE) {
+                                        BentoGridCard(
+                                            item = item,
+                                            tint = getCategoryTint(item),
+                                            minHeight = 110.dp,
+                                            onCardClick = { selectedNoteItem = item },
+                                            onReminderClick = {}
+                                        )
+                                    } else {
+                                        AnchorCard(
+                                            item = item,
+                                            onMoveToToday = { viewModel.moveToToday(item) },
+                                            onSnooze = { viewModel.snoozeTask(item) },
+                                            onComplete = { viewModel.completeTask(item) },
+                                            onDelete = { viewModel.deleteTask(item) },
+                                            onEdit = { selectedDetailItem = item },
+                                            onSnoozeCoach = { viewModel.openSnoozeCoach(item) }
+                                        )
+                                    }
+                                }
+                            }
+                            item {
+                                Spacer(modifier = Modifier.height(180.dp))
+                            }
+                        }
+                    }
+                } else {
+                    AnimatedContent(
+                        targetState = uiState.activeTab,
+                        transitionSpec = {
+                            fadeIn(tween(180)) togetherWith fadeOut(tween(160))
+                        },
+                        label = "active_tab_content"
+                    ) { tab ->
+                        when (tab) {
+                            AnchorTab.TODAY -> {
+                                TodayView(
+                                    todayTasks = todayTasks,
+                                    upcomingTasks = upcomingTasks,
+                                    overdueTasks = overdueTasks,
+                                    inboxTasks = inboxTasks,
+                                    notes = notes,
+                                    doneTasks = doneTasks,
+                                    onMoveToToday = { viewModel.moveToToday(it) },
+                                    onSnooze = { viewModel.snoozeTask(it) },
+                                    onComplete = { viewModel.completeTask(it) },
+                                    onDelete = { viewModel.deleteTask(it) },
+                                    onEdit = { viewModel.startEditing(it) },
+                                    onTaskClick = { selectedDetailItem = it },
+                                    onNoteClick = { selectedNoteItem = it },
+                                    onRestore = { viewModel.uncompleteTask(it) },
+                                    onSnoozeCoach = { viewModel.openSnoozeCoach(it) },
+                                    onOpenMorningBrief = { viewModel.openMorningBrief() },
+                                    onOpenEveningReview = { viewModel.openEveningReview() },
+                                    onAiTriage = { viewModel.openInboxTriage() }
+                                )
+                            }
+                            AnchorTab.INBOX -> {
+                                InboxView(
+                                    inboxItems = inboxTasks,
+                                    overdueItems = overdueTasks,
+                                    onMoveToToday = { viewModel.moveToToday(it) },
+                                    onSnooze = { viewModel.snoozeTask(it) },
+                                    onComplete = { viewModel.completeTask(it) },
+                                    onDelete = { viewModel.deleteTask(it) },
+                                    onEdit = { viewModel.startEditing(it) },
+                                    onSnoozeCoach = { viewModel.openSnoozeCoach(it) },
+                                    onAiTriage = { viewModel.openInboxTriage() }
+                                )
+                            }
+                            AnchorTab.UPCOMING -> {
+                                UpcomingView(
+                                    upcomingTasks = upcomingTasks,
+                                    onMoveToToday = { viewModel.moveToToday(it) },
+                                    onSnooze = { viewModel.snoozeTask(it) },
+                                    onComplete = { viewModel.completeTask(it) },
+                                    onDelete = { viewModel.deleteTask(it) },
+                                    onEdit = { viewModel.startEditing(it) },
+                                    onSnoozeCoach = { viewModel.openSnoozeCoach(it) }
+                                )
+                            }
+                            AnchorTab.NOTES -> {
+                                NotesView(
+                                    notes = notes,
+                                    onDelete = { viewModel.deleteTask(it) },
+                                    onEdit = { selectedNoteItem = it }
+                                )
+                            }
+                            AnchorTab.DONE -> {
+                                DoneView(
+                                    doneTasks = doneTasks,
+                                    onRestore = { viewModel.uncompleteTask(it) },
+                                    onDelete = { viewModel.deleteTask(it) }
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             // Top progressive gradient fade so scrolling content smoothly fades under header
@@ -304,7 +486,7 @@ fun MainScreen(
                     )
             )
 
-            // Header: Display numeral/date with 3D tactile telemetry badge
+            // Header: Display weekday/date with Search & Focus AI Telemetry Capsule
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -346,53 +528,93 @@ fun MainScreen(
                     )
                 }
 
-                // 3D Tactile Telemetry Capsule (triggers Intelligence dialog)
-                Box(
-                    modifier = Modifier
-                        .padding(top = 6.dp)
-                        .drawBehind {
-                            drawRoundRect(
-                                color = Color(0x120E182A),
-                                topLeft = Offset(0f, 3.dp.toPx()),
-                                size = size,
-                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx(), 16.dp.toPx())
-                            )
-                        }
-                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
-                        .background(Surface1)
-                        .drawBehind {
-                            drawLine(
-                                color = Color.White,
-                                start = Offset(10.dp.toPx(), 1.dp.toPx()),
-                                end = Offset(size.width - 10.dp.toPx(), 1.dp.toPx()),
-                                strokeWidth = 1.dp.toPx()
-                            )
-                        }
-                        .clickable {
-                            HapticHelper.vibrate8ms(context)
-                            viewModel.askIntelligence("What should I focus on next?")
-                        }
-                        .semantics {
-                            contentDescription = "Ask Anchor for focus suggestions"
-                            role = Role.Button
-                        }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
-                        .testTag("intelligence_button"),
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 6.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        androidx.compose.foundation.Canvas(modifier = Modifier.size(6.dp)) {
-                            drawCircle(color = com.example.ui.theme.AccentGold)
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
+                    // Search toggle icon button
+                    Box(
+                        modifier = Modifier
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                            .background(if (uiState.isSearchOpen) com.example.ui.theme.Surface2 else Surface1)
+                            .drawBehind {
+                                drawLine(
+                                    color = Color.White,
+                                    start = Offset(6.dp.toPx(), 1.dp.toPx()),
+                                    end = Offset(size.width - 6.dp.toPx(), 1.dp.toPx()),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
+                            .clickable {
+                                HapticHelper.vibrate8ms(context)
+                                if (uiState.isSearchOpen) viewModel.closeSearch() else viewModel.openSearch()
+                            }
+                            .semantics {
+                                contentDescription = if (uiState.isSearchOpen) "Close search" else "Open search"
+                                role = Role.Button
+                            }
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            .testTag("search_toggle_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
-                            text = if (compactHeader) "AI" else "3D CHRONO",
+                            text = if (uiState.isSearchOpen) "ESC" else "SEARCH",
                             fontFamily = GeistMono,
                             fontWeight = FontWeight.Medium,
                             fontSize = 10.sp,
-                            color = com.example.ui.theme.AccentGold,
+                            color = if (uiState.isSearchOpen) com.example.ui.theme.AccentGold else TextSecondary,
                             letterSpacing = 0.12.em
                         )
+                    }
+
+                    // Focus AI Telemetry Capsule (triggers Intelligence dialog)
+                    Box(
+                        modifier = Modifier
+                            .drawBehind {
+                                drawRoundRect(
+                                    color = Color(0x120E182A),
+                                    topLeft = Offset(0f, 3.dp.toPx()),
+                                    size = size,
+                                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(16.dp.toPx(), 16.dp.toPx())
+                                )
+                            }
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                            .background(Surface1)
+                            .drawBehind {
+                                drawLine(
+                                    color = Color.White,
+                                    start = Offset(10.dp.toPx(), 1.dp.toPx()),
+                                    end = Offset(size.width - 10.dp.toPx(), 1.dp.toPx()),
+                                    strokeWidth = 1.dp.toPx()
+                                )
+                            }
+                            .clickable {
+                                HapticHelper.vibrate8ms(context)
+                                viewModel.askIntelligence("What should I focus on next?")
+                            }
+                            .semantics {
+                                contentDescription = "Ask Focus AI for suggestions"
+                                role = Role.Button
+                            }
+                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                            .testTag("intelligence_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            androidx.compose.foundation.Canvas(modifier = Modifier.size(6.dp)) {
+                                drawCircle(color = com.example.ui.theme.AccentGold)
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "FOCUS AI",
+                                fontFamily = GeistMono,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 10.sp,
+                                color = com.example.ui.theme.AccentGold,
+                                letterSpacing = 0.12.em
+                            )
+                        }
                     }
                 }
             }
@@ -401,7 +623,7 @@ fun MainScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp)
+                    .height(180.dp)
                     .align(Alignment.BottomCenter)
                     .background(
                         brush = Brush.verticalGradient(
@@ -414,16 +636,17 @@ fun MainScreen(
                     )
             )
 
-            // Floating Bottom: Clean Capture Bar anchored above system navigation bar
+            // Floating Bottom: Clean Capture Bar positioned above QuietNavigationBar
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = 10.dp)
+                    .padding(bottom = if (isNavVisible && !uiState.isSearchOpen) 80.dp else 10.dp)
             ) {
                 CaptureBar(
                     onCapture = { text -> viewModel.capture(text) },
+                    onIntelligenceQuery = { prompt -> viewModel.askIntelligence(prompt) },
                     clipboardText = uiState.clipboardCandidate,
                     onAcceptClipboard = { viewModel.acceptClipboard() },
                     onDismissClipboard = { viewModel.dismissClipboard() },
@@ -431,6 +654,17 @@ fun MainScreen(
                     onFocusHandled = onCaptureFocusHandled
                 )
             }
+
+            // Floating QuietNavigationBar
+            QuietNavigationBar(
+                activeTab = uiState.activeTab,
+                onTabSelected = { tab -> viewModel.setTab(tab) },
+                inboxCount = inboxTasks.size,
+                todayCount = todayTasks.size,
+                hasOverdue = overdueTasks.isNotEmpty(),
+                isVisible = isNavVisible && !uiState.isSearchOpen,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
         }
 
         // Shared-element / detail expansion sheet
@@ -597,6 +831,19 @@ fun MainScreen(
                 onLoadSampleData = {
                     viewModel.loadSampleData()
                     Toast.makeText(context, "Loaded 10 realistic sample anchors", Toast.LENGTH_SHORT).show()
+                },
+                onExportBackup = {
+                    viewModel.exportBackup { json ->
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Anchor Backup", json)
+                        clipboard?.setPrimaryClip(clip)
+                        Toast.makeText(context, "Backup copied to clipboard!", Toast.LENGTH_LONG).show()
+                    }
+                },
+                onImportBackup = { jsonStr ->
+                    viewModel.importBackup(jsonStr) { count ->
+                        Toast.makeText(context, "Restored $count anchors successfully!", Toast.LENGTH_LONG).show()
+                    }
                 },
                 onDismiss = { viewModel.dismissSettings() }
             )

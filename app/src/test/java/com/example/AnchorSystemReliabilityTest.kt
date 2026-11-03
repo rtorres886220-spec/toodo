@@ -259,4 +259,65 @@ class AnchorSystemReliabilityTest {
         assertTrue(answer.relevantItems.any { it.title == "Reply to quick email" })
         assertFalse(answer.relevantItems.any { it.title == "Rebuild server cluster" })
     }
+
+    // 7. Recurrence Engine
+    @Test
+    fun `completing recurring daily task automatically schedules tomorrow iteration`() = runBlocking {
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val recurringTask = AnchorItem(
+            title = "Daily morning meditation",
+            status = AnchorItem.STATUS_TODAY,
+            dueDate = todayStr,
+            recurrenceRule = AnchorItem.RECURRENCE_DAILY
+        )
+        val id = database.anchorDao().insert(recurringTask)
+        val inserted = database.anchorDao().getItemById(id)!!
+
+        repository.markCompleted(inserted)
+
+        // The original task is completed
+        val originalAfter = database.anchorDao().getItemById(id)!!
+        assertEquals(AnchorItem.STATUS_DONE, originalAfter.status)
+        assertNotNull(originalAfter.completedAt)
+
+        // A new recurring iteration is created
+        val activeItems = database.anchorDao().getAllActiveTasksSync()
+        val newIteration = activeItems.firstOrNull { it.title == "Daily morning meditation" }
+        assertNotNull(newIteration)
+        assertTrue(newIteration!!.id != id)
+        assertNull(newIteration.completedAt)
+        assertNotNull(newIteration.dueDate)
+        assertTrue(newIteration.dueDate!! > todayStr)
+    }
+
+    // 8. Global Search
+    @Test
+    fun `searchAllItems finds matching tasks and notes`() = runBlocking {
+        val task = AnchorItem(title = "Kubernetes ingress migration", tags = "infra,cloud", status = AnchorItem.STATUS_INBOX)
+        val note = AnchorItem(title = "Architecture spec for distributed queue", type = AnchorItem.TYPE_NOTE, status = AnchorItem.STATUS_INBOX)
+        val unrelated = AnchorItem(title = "Grocery shopping list", status = AnchorItem.STATUS_INBOX)
+
+        database.anchorDao().insertAll(listOf(task, note, unrelated))
+
+        val results = database.anchorDao().searchAllItems("Kubernetes").first()
+        assertEquals(1, results.size)
+        assertEquals("Kubernetes ingress migration", results[0].title)
+
+        val noteResults = database.anchorDao().searchAllItems("distributed queue").first()
+        assertEquals(1, noteResults.size)
+        assertEquals(AnchorItem.TYPE_NOTE, noteResults[0].type)
+    }
+
+    // 9. Data Portability JSON
+    @Test
+    fun `export and import JSON preserves items`() = runBlocking {
+        val task = AnchorItem(title = "Export test anchor", priority = AnchorItem.PRIORITY_HIGH, status = AnchorItem.STATUS_TODAY)
+        database.anchorDao().insert(task)
+
+        val json = repository.exportDataAsJson()
+        assertTrue(json.contains("Export test anchor"))
+
+        val importedCount = repository.importDataFromJson(json)
+        assertTrue(importedCount >= 1)
+    }
 }

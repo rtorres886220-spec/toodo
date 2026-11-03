@@ -320,6 +320,22 @@ fun TaskDetailSheet(
                             value = if (item.status == AnchorItem.STATUS_TODAY) "Active Today" else "Queued"
                         )
 
+                        if (!item.recurrenceRule.isNullOrBlank()) {
+                            MetadataRow(
+                                icon = {
+                                    Canvas(modifier = Modifier.size(18.dp)) {
+                                        drawCircle(
+                                            color = AccentGold,
+                                            radius = size.minDimension / 2f - 1.dp.toPx(),
+                                            style = Stroke(width = 1.25.dp.toPx())
+                                        )
+                                    }
+                                },
+                                label = "Repeats",
+                                value = item.recurrenceRule
+                            )
+                        }
+
                         // 4. Repeat rule
                         MetadataRow(
                             icon = {

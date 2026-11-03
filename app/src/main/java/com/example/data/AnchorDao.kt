@@ -88,4 +88,7 @@ interface AnchorDao {
 
     @Query("SELECT * FROM anchor_items WHERE type = 'note' AND status != 'DONE' AND (title LIKE '%' || :query || '%' OR rawInput LIKE '%' || :query || '%' OR tags LIKE '%' || :query || '%') ORDER BY createdAt DESC")
     suspend fun searchNotesSync(query: String): List<AnchorItem>
+
+    @Query("SELECT * FROM anchor_items WHERE parentId IS NULL AND (title LIKE '%' || :query || '%' OR rawInput LIKE '%' || :query || '%' OR tags LIKE '%' || :query || '%') ORDER BY createdAt DESC")
+    fun searchAllItems(query: String): Flow<List<AnchorItem>>
 }

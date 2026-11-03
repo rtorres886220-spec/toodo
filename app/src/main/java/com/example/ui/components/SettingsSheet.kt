@@ -65,6 +65,8 @@ fun SettingsSheet(
     onRequestNotificationPermission: () -> Unit,
     onRequestExactAlarmAccess: () -> Unit,
     onLoadSampleData: () -> Unit,
+    onExportBackup: () -> Unit = {},
+    onImportBackup: (String) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -339,7 +341,70 @@ fun SettingsSheet(
                 )
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Data Portability Section
+            Text(
+                text = "DATA PORTABILITY & BACKUP",
+                fontFamily = GeistMono,
+                fontSize = 11.sp,
+                color = AccentGold,
+                letterSpacing = 0.14.em
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            HapticHelper.vibrate8ms(context)
+                            onExportBackup()
+                        }
+                        .testTag("export_backup_button")
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "EXPORT BACKUP",
+                        fontFamily = GeistMono,
+                        fontSize = 11.sp,
+                        color = TextPrimary,
+                        letterSpacing = 0.12.em
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            HapticHelper.vibrate8ms(context)
+                            // Read from clipboard directly for convenience
+                            val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                            val clip = clipboard?.primaryClip?.getItemAt(0)?.text?.toString()
+                            if (!clip.isNullOrBlank() && clip.trim().startsWith("[")) {
+                                onImportBackup(clip.trim())
+                            } else {
+                                android.widget.Toast.makeText(context, "Copy valid JSON backup to clipboard first", android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        .testTag("import_backup_button")
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "PASTE & IMPORT",
+                        fontFamily = GeistMono,
+                        fontSize = 11.sp,
+                        color = TextPrimary,
+                        letterSpacing = 0.12.em
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
 
             validationError?.let { message ->
                 Text(

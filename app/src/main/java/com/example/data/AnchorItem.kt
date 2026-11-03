@@ -33,7 +33,8 @@ data class AnchorItem(
     val snoozeUntil: Long? = null,
     val aiSorted: Boolean = false,
     val aiBreakdownSteps: String? = null, // JSON or bulleted micro-steps
-    val sharedUri: String? = null
+    val sharedUri: String? = null,
+    val recurrenceRule: String? = null // null | "DAILY" | "WEEKDAYS" | "WEEKLY" | "MONTHLY"
 ) {
     companion object {
         const val TYPE_TASK = "task"
@@ -47,6 +48,11 @@ data class AnchorItem(
         const val PRIORITY_MEDIUM = "medium"
         const val PRIORITY_LOW = "low"
         const val PRIORITY_NONE = "none"
+
+        const val RECURRENCE_DAILY = "DAILY"
+        const val RECURRENCE_WEEKDAYS = "WEEKDAYS"
+        const val RECURRENCE_WEEKLY = "WEEKLY"
+        const val RECURRENCE_MONTHLY = "MONTHLY"
     }
 
     val tagList: List<String>

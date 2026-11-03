@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [AnchorItem::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AnchorDatabase : RoomDatabase() {
@@ -28,6 +28,12 @@ abstract class AnchorDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE anchor_items ADD COLUMN recurrenceRule TEXT DEFAULT NULL")
+            }
+        }
+
         fun getDatabase(context: Context): AnchorDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -35,7 +41,8 @@ abstract class AnchorDatabase : RoomDatabase() {
                     AnchorDatabase::class.java,
                     "anchor_database"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .fallbackToDestructiveMigrationOnDowngrade()
                 .build()
                 INSTANCE = instance
                 instance
